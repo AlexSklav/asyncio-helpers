@@ -7,3 +7,5 @@ build/
 *.egg-info
 .idea
 *.pyc
+# Mac crap
+.DS_Store

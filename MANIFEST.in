@@ -6,3 +6,5 @@ graft src
 prune *.pyc
 include versioneer.py
 include src/asyncio_helpers/_version.py
+exclude .DS_Store
+recursive-exclude asyncio_helpers .DS_Store

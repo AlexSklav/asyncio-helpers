@@ -26,9 +26,6 @@ setup(name='asyncio-helpers',
       author_email='christian@fobel.net',
       url='https://github.com/sci-bots/asyncio-helpers',
       license='BSD',
-      packages=find_packages('src'),
-      package_dir={'': 'src'},
-      install_requires=['openpyxl'],
-      py_modules=[splitext(basename(path))[0] for path in glob('src/*.py')],
+      packages=['asyncio_helpers'],
       # Install data listed in `MANIFEST.in`
       include_package_data=True)

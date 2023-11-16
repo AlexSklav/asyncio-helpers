@@ -3,33 +3,43 @@
 {% else %}
 {% set GIT_VERSION = GIT_DESCRIBE_TAG[1:] %}
 {% endif %}
-# source will be downloaded prior to filling in jinja templates
-# Example assumes that this folder has setup.py in it
-source:
-  git_url: ../
-
+{% set PKG_NAME = 'asyncio-helpers' %}
+{% set MODULE_NAME = PKG_NAME.replace('-', '_') %}
 package:
-  name: asyncio-helpers
+  name: {{ PKG_NAME }}
   version: {{ GIT_VERSION }}
 
 build:
-  entry_points:
-    - trollius-to-async = asyncio_helpers.trollius_to_async:main
-  script: "{{ PYTHON }} -m pip install . --no-deps -vv"
+  # If this is a new build for the same version, increment the build number.
+  # If you do not include this key, it defaults to 0.
+  number: 0
+  noarch: python
+  script:
+    # Install source directory as Python package.
+    - python setup.py install --single-version-externally-managed --record record.txt
+
 
 requirements:
   build:
-    - python
+    - python >=3.8
     - pip
 
   run:
+    - python >=3.8
     - logging-helpers
-    - trollius  # [py<34]
+
 
 test:
   imports:
-    - asyncio_helpers
+    - {{ MODULE_NAME }}
 
 about:
   home: https://github.com/sci-bots/{{ PKG_NAME }}
   license: BSD
+  summary: Helper functions, etc. for asyncio development
+
+# source will be downloaded prior to filling in jinja templates
+# Example assumes that this folder has setup.py in it
+source:
+#  git_url: ../
+  path: ..
