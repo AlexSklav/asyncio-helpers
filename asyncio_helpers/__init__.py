@@ -1,88 +1,25 @@
-# coding: utf-8
-import asyncio
-import functools
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
+from functools import wraps, partial
 import platform
 import threading
 
-from typing import Coroutine, Union, Callable, Tuple, Any
-from functools import wraps, partial
-
 from logging_helpers import _L
+try:
+    import asyncio
+    from .async_py3 import *
+except ImportError:
+    import trollius as asyncio
+    from .async_py2 import *
+
 
 from ._version import get_versions
-
 __version__ = get_versions()['version']
 del get_versions
 
 
-def sync(async_wrapper: Coroutine) -> Callable:
-    """
-    Return coroutine adapter for legacy asynchronous wrapper.
-
-    Coroutine returns once wrapped function has finished executing.
-    This decorator is useful for synchronizing execution of non-asyncio
-    asynchronous functions.
-
-    Notes
-    -----
-
-    Function **MUST** be wrapped within thread context where it will be yielded
-    from.
-
-    Parameters
-    ----------
-    async_wrapper : function
-        Decorator that will execute the wrapped function in another thread.
-
-    Example
-    -------
-
-    >>> from asyncio_helpers import sync
-    >>> from pygtk_helpers.gthreads import gtk_threadsafe
-    >>> # ...
-    >>> @sync(gtk_threadsafe)
-    >>> def ui_modifying_function():
-    ...     # Modify UI state.
-    ...     ...
-    >>> async def coro():
-    ...     # Call outside of GTK thread in a coroutine.
-    ...     # Yield will return _after_ function has been executed in GTK
-    ...     # thread.
-    ...     result = await (ui_modifying_function())
-    """
-
-    def _sync(f: Union[Callable, functools.partial]) -> Callable:
-        """
-        Parameters
-        ----------
-        f : function or functools.partial
-        """
-        loop = ensure_event_loop()
-        done = asyncio.Event()
-
-        async def _wrapped(*args) -> bool:
-            done.result = await f(*args)
-            loop.call_soon_threadsafe(done.set)
-            return False
-
-        _wrapped.loop = loop
-        _wrapped.done = done
-
-        wraps_func = f.func if isinstance(f, partial) else f
-
-        @wraps(wraps_func)
-        async def _synced(*args):
-            await _wrapped(*args)
-            await _wrapped.done.wait()
-            return _wrapped.done.result
-
-        return _synced
-
-    return _sync
-
-
 def cancellable(f):
-    """
+    '''
     Decorator to add `started` event attribute and `cancel()` method.
 
     The `cancel()` method cancels the running coroutine and by raising a
@@ -114,7 +51,7 @@ def cancellable(f):
 
     .. versionchanged:: 0.2.1
         Retry cancelling tasks if a `RuntimeError` is raised.
-    """
+    '''
     started = threading.Event()
 
     @wraps(f)
@@ -135,8 +72,11 @@ def cancellable(f):
                 break
             except RuntimeError as exception:
                 # e.g., set changed size during iteration
-                _L().debug(f'ERROR: {exception}', exc_info=True)
+                _L().debug('ERROR: %s', exception, exc_info=True)
         list(map(lambda task: task.cancel(), tasks))
+
+    def cancel():
+        started.loop.call_soon_threadsafe(_cancel)
 
     _wrapped.started = started
     _wrapped.cancel = lambda: started.loop.call_soon_threadsafe(_cancel)
@@ -144,7 +84,7 @@ def cancellable(f):
 
 
 def new_file_event_loop():
-    """
+    '''
     Create an asyncio event loop compatible with file IO events, e.g., serial
     device events.
 
@@ -156,12 +96,13 @@ def new_file_event_loop():
     Returns
     -------
     asyncio.ProactorEventLoop or asyncio.SelectorEventLoop
-    """
-    return asyncio.new_event_loop()
+    '''
+    return (asyncio.ProactorEventLoop() if platform.system() == 'Windows'
+            else asyncio.new_event_loop())
 
 
 def ensure_event_loop():
-    """
+    '''
     Ensure that an asyncio event loop has been bound to the local thread
     context.
 
@@ -173,7 +114,7 @@ def ensure_event_loop():
     Returns
     -------
     asyncio.ProactorEventLoop or asyncio.SelectorEventLoop
-    """
+    '''
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError as e:
@@ -186,7 +127,7 @@ def ensure_event_loop():
 
 
 def with_loop(func):
-    """
+    '''
     Decorator to run coroutine within an asyncio event loop.
 
     Parameters
@@ -212,8 +153,7 @@ def with_loop(func):
     >>>
     >>> a = 'hello'
     >>> assert(foo(a) == a)
-    """
-
+    '''
     @wraps(func)
     def wrapped(*args, **kwargs):
         loop = ensure_event_loop()
@@ -224,7 +164,8 @@ def with_loop(func):
             thread_required = True
         elif all([platform.system() == 'Windows',
                   not isinstance(loop, asyncio.ProactorEventLoop)]):
-            _L().debug(f'`ProactorEventLoop` required, not `{type(loop)}` loop in background thread.')
+            _L().debug('`ProactorEventLoop` required, not `%s` loop in '
+                       'background thread.', type(loop))
             thread_required = True
 
         if thread_required:
@@ -234,7 +175,8 @@ def with_loop(func):
             def _run(generator):
                 loop = ensure_event_loop()
                 try:
-                    result = loop.run_until_complete(asyncio.ensure_future(generator))
+                    result = loop.run_until_complete(asyncio
+                                                     .ensure_future(generator))
                 except Exception as e:
                     finished.result = None
                     finished.error = e
@@ -245,8 +187,8 @@ def with_loop(func):
                     loop.close()
                     _L().debug('closed event loop')
                 finished.set()
-
-            thread = threading.Thread(target=_run, args=(func(*args, **kwargs),))
+            thread = threading.Thread(target=_run,
+                                      args=(func(*args, **kwargs), ))
             thread.daemon = True
             thread.start()
             finished.wait()
@@ -256,5 +198,5 @@ def with_loop(func):
 
         _L().debug('Execute in exiting event loop in main thread')
         return loop.run_until_complete(func(**kwargs))
-
     return wrapped
+
